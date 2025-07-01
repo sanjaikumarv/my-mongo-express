@@ -1,38 +1,21 @@
-FROM node:18-alpine3.16 AS build
+# Use Node.js 20 alpine image as builder
+FROM node:20.15.0-alpine AS builder
 
-WORKDIR /dockerbuild
+# Set up working directory
+RUN mkdir /app
+WORKDIR /app
+
+# Copy essential files
+COPY package*.json ./
 COPY . .
 
-RUN yarn install \
-    && yarn build \
-    && rm -rf /dockerbuild/lib/scripts
+# Install dependencies and build
+RUN npm install
+ENV NODE_ENV=production
 
-FROM node:18-alpine3.16
 
-# "localhost" doesn't mean much in a container, so we adjust our default to the common service name "mongo" instead
-# (and make sure the server listens outside the container, since "localhost" inside the container is usually difficult to access)
-ENV ME_CONFIG_MONGODB_URL="mongodb://mongo:27017"
-ENV ME_CONFIG_MONGODB_ENABLE_ADMIN="true"
-ENV VCAP_APP_HOST="0.0.0.0"
+# Expose port for health check with fly.io
+EXPOSE 8000/tcp
 
-WORKDIR /opt/mongo-express
-
-COPY --from=build /dockerbuild/build /opt/mongo-express/build/
-COPY --from=build /dockerbuild/public /opt/mongo-express/public/
-COPY --from=build /dockerbuild/lib /opt/mongo-express/lib/
-COPY --from=build /dockerbuild/app.js /opt/mongo-express/
-COPY --from=build /dockerbuild/config.default.js /opt/mongo-express/
-COPY --from=build /dockerbuild/*.json /opt/mongo-express/
-COPY --from=build /dockerbuild/.yarn /opt/mongo-express/.yarn/
-COPY --from=build /dockerbuild/yarn.lock /opt/mongo-express/
-COPY --from=build /dockerbuild/.yarnrc.yml /opt/mongo-express/
-COPY --from=build /dockerbuild/.npmignore /opt/mongo-express/
-
-RUN apk -U add --no-cache \
-        bash=5.1.16-r2 \
-        tini=0.19.0-r0 \
-    && yarn workspaces focus --production
-
-EXPOSE 8081
-
-CMD ["/sbin/tini", "--", "yarn", "start"]
+# Start the application
+CMD ["node", "app.js"]
